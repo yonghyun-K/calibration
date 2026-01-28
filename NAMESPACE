@@ -1,0 +1,18 @@
+# Generated manually for the calibration package
+
+export(calibrate)
+export(estimate)
+export(calibration_g)
+export(calibrate_weights)
+export(calibrate.formula)
+
+S3method(calibrate, formula)
+
+S3method(print, calibration_fit)
+S3method(summary, calibration_fit)
+S3method(print, summary.calibration_fit)
+S3method(weights, calibration_fit)
+S3method(coef, calibration_fit)
+S3method(vcov, calibration_fit)
+
+importFrom(stats, model.frame, model.matrix, model.response, na.fail, reformulate, terms)
