@@ -33,7 +33,7 @@ returned totals correspond to calibrated counts by level.}
 \item{data}{Optional data frame.}
 \item{const}{Numeric vector of known population totals. A named vector is recommended; names are matched to \code{colnames(model.matrix(...))}. \code{const} must not contain \code{NA}.}
 \item{method}{Calibration method: \code{"BD"} (Bregman divergence), \code{"GE"} (generalized entropy), or \code{"DS"} (Deville--Sarndal divergence).}
-\item{entropy}{Entropy family code (\code{"SL"}, \code{"EL"}, \code{"ET"}, \code{"HD"}, \code{"CE"}, \code{"PH"}), a numeric Renyi order, or a list with \code{code}/\code{family} and (optionally) \code{del} (e.g., \code{list(code = "PH", del = 0.5)}).}
+\item{entropy}{Entropy family code (\code{"SL"}, \code{"EL"}, \code{"ET"}, \code{"HD"}, \code{"CE"}, \code{"PH"}), a numeric Renyi order, or a list with \code{code}/\code{family} and (optionally) \code{del} (e.g., \code{list(code = "PH", del = 0.5)}). When using \code{"PH"} and \code{del} is omitted, it defaults to 1.}
 \item{divergence}{Optional custom divergence specification. If supplied, this overrides \code{entropy}. A custom divergence must provide functions \code{g}, \code{g_inv}, \code{g_prime_inv}, and \code{fprime}.}
 \item{w.scale}{Weight scaling factor (phi).}
 \item{G.scale}{Entropy scaling factor (q).}

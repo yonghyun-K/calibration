@@ -40,7 +40,8 @@
 #'   or "DS" (Deville-Sarndal style divergence).
 #' @param entropy Entropy family code ("SL", "EL", "ET", "HD", "CE", "PH"),
 #'   a numeric Renyi order, or a list with `code`/`family` and (optionally) `del`
-#'   (e.g., `list(code = "PH", del = 0.5)`).
+#'   (e.g., `list(code = "PH", del = 0.5)`). When using "PH" and `del` is omitted,
+#'   it defaults to 1.
 #' @param w.scale Weight scaling factor (phi). See package documentation.
 #' @param G.scale Entropy scaling factor (q). See package documentation.
 #' @param bounds Optional weight bounds.

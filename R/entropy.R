@@ -5,7 +5,7 @@
 #' @param entropy Either a numeric value (Renyi order), a string code,
 #'   or a list with `code`/`family` and (optionally) `del`.
 #'   Supported codes: "SL", "EL", "ET", "HD", "CE", "PH".
-#' @param del Optional threshold used by "PH".
+#' @param del Optional threshold used by "PH". Defaults to 1 when omitted.
 #'
 #' @keywords internal
 entropy_spec <- function(entropy, del = NULL) {
@@ -39,7 +39,8 @@ entropy_spec <- function(entropy, del = NULL) {
   )
 
   if (code == "PH") {
-    if (is.null(del) || length(del) != 1 || !is.finite(del) || del <= 0) {
+    if (is.null(del)) del <- 1
+    if (length(del) != 1 || !is.finite(del) || del <= 0) {
       stop("When entropy = 'PH', 'del' must be a single positive number.")
     }
   }
@@ -329,7 +330,7 @@ entropy_spec <- function(entropy, del = NULL) {
 #' @param x Numeric vector.
 #' @param entropy Entropy family ("SL", "EL", "ET", "HD", "CE", "PH")
 #'   or a numeric Renyi order.
-#' @param del Optional threshold used when entropy = "PH".
+#' @param del Optional threshold used when entropy = "PH". Defaults to 1 when omitted.
 #'
 #' @return Numeric vector.
 #' @export
