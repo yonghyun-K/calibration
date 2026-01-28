@@ -65,7 +65,9 @@
   r <- spec$r
   code <- NA_character_
 
-  if (identical(fam, "renyi")) {
+  if (identical(fam, "custom")) {
+    code <- "custom"
+  } else if (identical(fam, "renyi")) {
     if (isTRUE(all.equal(r, 1))) code <- "SL"
     else if (isTRUE(all.equal(r, 0))) code <- "ET"
     else if (isTRUE(all.equal(r, -1))) code <- "EL"
@@ -104,6 +106,23 @@ if (!is.null(bnd$upper)) {
     }
     # Enforce strict positivity (numerically) unless bounds already do it.
     constraints <- c(constraints, list(w >= domain_eps))
+  }
+  if (identical(code, "custom")) {
+    if (!is.function(spec$G)) {
+      stop("Custom divergence for solver='cvxr' requires a 'G' function.")
+    }
+    if (!identical(method, "BD")) {
+      stop("Custom divergence with solver='cvxr' currently supports method = 'BD' only.")
+    }
+    g_neg <- try(spec$G(-1), silent = TRUE)
+    g_pos <- try(spec$G(1), silent = TRUE)
+    if (!inherits(g_neg, "try-error") && !inherits(g_pos, "try-error")) {
+      if (!is.finite(g_neg) && is.finite(g_pos)) {
+        constraints <- c(constraints, list(w >= domain_eps))
+      } else if (is.finite(g_neg) && !is.finite(g_pos)) {
+        constraints <- c(constraints, list(w <= -domain_eps))
+      }
+    }
   }
 
   # Choose a CVXR solver if the user didn't specify one.
@@ -152,7 +171,21 @@ if (!is.null(bnd$upper)) {
       stop("Non-finite g(w0) encountered. Check that w0 lies in the divergence domain for the chosen entropy.")
     }
 
-    if (identical(code, "SL")) {
+    if (identical(code, "custom")) {
+      objective_expr <- tryCatch(spec$G(z), error = function(e) NULL)
+      if (is.null(objective_expr)) {
+        g_vals <- try(spec$G(c(0, 1, 2)), silent = TRUE)
+        g_neg <- try(spec$G(-1), silent = TRUE)
+        if (!inherits(g_vals, "try-error") &&
+            isTRUE(all.equal(g_vals, c(0, 1, 4))) &&
+            !inherits(g_neg, "try-error") && !is.finite(g_neg)) {
+          objective_expr <- CVXR::square(z)
+        } else {
+          stop("Custom divergence G must return a CVXR-compatible expression.")
+        }
+      }
+      objective_expr <- objective_expr - z * g_z0
+    } else if (identical(code, "SL")) {
       # G(z)=0.5 z^2, g(z0)=z0
       objective_expr <- 0.5 * CVXR::square(z) - z * g_z0
     } else if (identical(code, "ET")) {

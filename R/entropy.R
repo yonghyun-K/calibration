@@ -110,20 +110,35 @@ entropy_spec <- function(entropy, del = NULL) {
 
 #' Validate a user-supplied divergence specification
 #'
-#' A custom divergence must provide the following functions:
-#' * g(x)
-#' * g_inv(u, intercept = 0)
-#' * g_prime_inv(u, intercept = 0)
-#' * fprime(x)
+#' Requirements depend on the solver backend:
+#' * cvxr: G(x)
+#' * nleqslv: g_inv(u, intercept = 0)
+#' * newton/auto: G(x) and g_inv(u, intercept = 0)
 #'
 #' @keywords internal
-.validate_custom_divergence <- function(divergence) {
+.validate_custom_divergence <- function(divergence, solver = "newton") {
   if (!is.list(divergence)) stop("'divergence' must be a list.")
-  req <- c("g", "g_inv", "g_prime_inv", "fprime")
+
+  solver <- if (is.null(solver) || !nzchar(solver)) "newton" else solver
+  req <- switch(
+    solver,
+    cvxr = c("G"),
+    nleqslv = c("g_inv"),
+    auto = c("G", "g_inv"),
+    newton = c("G", "g_inv"),
+    c("g", "g_inv", "g_prime_inv", "fprime")
+  )
+
   missing <- req[!vapply(req, function(n) is.function(divergence[[n]]), logical(1))]
   if (length(missing) > 0) {
-    stop("Custom divergence is missing required functions: ", paste(missing, collapse = ", "))
+    stop(
+      "Custom divergence is missing required functions for solver '",
+      solver,
+      "': ",
+      paste(missing, collapse = ", ")
+    )
   }
+
   divergence$family <- "custom"
   divergence
 }
@@ -135,6 +150,71 @@ entropy_spec <- function(entropy, del = NULL) {
   isTRUE(all.equal(r, rr)) && rr > 0 && (rr %% 2 == 1)
 }
 
+#' Numeric derivatives for custom divergence fallbacks
+#'
+#' @keywords internal
+.num_derivative <- function(fn, x, eps = sqrt(.Machine$double.eps)) {
+  x <- as.numeric(x)
+  h <- eps * pmax(1, abs(x))
+  out <- vapply(seq_along(x), function(i) {
+    xi <- x[i]
+    hi <- h[i]
+    f1 <- fn(xi + hi)
+    f2 <- fn(xi - hi)
+    (f1 - f2) / (2 * hi)
+  }, numeric(1))
+  out
+}
+
+#' @keywords internal
+.num_second_derivative <- function(fn, x, eps = sqrt(.Machine$double.eps)) {
+  x <- as.numeric(x)
+  h <- eps * pmax(1, abs(x))
+  out <- vapply(seq_along(x), function(i) {
+    xi <- x[i]
+    hi <- h[i]
+    f1 <- fn(xi + hi)
+    f0 <- fn(xi)
+    f2 <- fn(xi - hi)
+    (f1 - 2 * f0 + f2) / (hi^2)
+  }, numeric(1))
+  out
+}
+
+#' Numeric inverse for g_inv (solve g_inv(u) = x)
+#'
+#' @keywords internal
+.invert_g_inv <- function(x, g_inv, max_expand = 25, grid_points = 21) {
+  x <- as.numeric(x)
+  out <- vapply(seq_along(x), function(i) {
+    target <- x[i]
+    fn <- function(u) g_inv(u, intercept = 0) - target
+    range <- 1
+    for (k in seq_len(max_expand)) {
+      xs <- seq(-range, range, length.out = grid_points)
+      vals <- vapply(xs, fn, numeric(1))
+      finite <- is.finite(vals)
+      if (sum(finite) >= 2) {
+        for (j in seq_len(length(xs) - 1)) {
+          if (finite[j] && finite[j + 1]) {
+            v1 <- vals[j]
+            v2 <- vals[j + 1]
+            if (v1 == 0) return(xs[j])
+            if (v2 == 0) return(xs[j + 1])
+            if (v1 * v2 < 0) {
+              root <- try(uniroot(fn, lower = xs[j], upper = xs[j + 1], tol = 1e-8), silent = TRUE)
+              if (!inherits(root, "try-error")) return(root$root)
+            }
+          }
+        }
+      }
+      range <- range * 2
+    }
+    NA_real_
+  }, numeric(1))
+  out
+}
+
 #' Entropy derivative g(x) for built-in families
 #'
 #' @keywords internal
@@ -142,7 +222,10 @@ entropy_spec <- function(entropy, del = NULL) {
   if (!is.list(spec) || is.null(spec$family)) stop("Internal error: invalid entropy spec")
 
   if (identical(spec$family, "custom")) {
-    return(spec$g(x))
+    if (is.function(spec$g)) return(spec$g(x))
+    if (is.function(spec$G)) return(.num_derivative(spec$G, x))
+    if (is.function(spec$g_inv)) return(.invert_g_inv(x, spec$g_inv))
+    return(rep(NA_real_, length(x)))
   }
 
   if (identical(spec$family, "renyi")) {
@@ -241,7 +324,14 @@ entropy_spec <- function(entropy, del = NULL) {
   if (length(intercept) == 1) intercept <- rep(intercept, length(u))
 
   if (identical(spec$family, "custom")) {
-    return(spec$g_prime_inv(u, intercept = intercept))
+    if (is.function(spec$g_prime_inv)) {
+      return(spec$g_prime_inv(u, intercept = intercept))
+    }
+    if (is.function(spec$g_inv)) {
+      fn <- function(v) spec$g_inv(v, intercept = intercept)
+      return(.num_derivative(fn, u))
+    }
+    return(rep(NA_real_, length(u)))
   }
 
   if (identical(spec$family, "renyi")) {
@@ -286,7 +376,16 @@ entropy_spec <- function(entropy, del = NULL) {
 #' @keywords internal
 .fprime_impl <- function(x, spec) {
   if (identical(spec$family, "custom")) {
-    return(spec$fprime(x))
+    if (is.function(spec$fprime)) return(spec$fprime(x))
+    if (is.function(spec$g)) {
+      gp <- .num_derivative(spec$g, x)
+      return(1 / gp)
+    }
+    if (is.function(spec$G)) {
+      gpp <- .num_second_derivative(spec$G, x)
+      return(1 / gpp)
+    }
+    return(rep(NA_real_, length(x)))
   }
 
   if (identical(spec$family, "renyi")) {

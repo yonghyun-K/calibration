@@ -33,8 +33,8 @@ returned totals correspond to calibrated counts by level.}
 \item{data}{Optional data frame.}
 \item{const}{Numeric vector of known population totals. A named vector is recommended; names are matched to \code{colnames(model.matrix(...))}. \code{const} must not contain \code{NA}.}
 \item{method}{Calibration method: \code{"BD"} (Bregman divergence), \code{"GE"} (generalized entropy), or \code{"DS"} (Deville--Sarndal divergence).}
-\item{entropy}{Entropy family code (\code{"SL"}, \code{"EL"}, \code{"ET"}, \code{"HD"}, \code{"CE"}, \code{"PH"}), a numeric Renyi order, or a list with \code{code}/\code{family} and (optionally) \code{del} (e.g., \code{list(code = "PH", del = 0.5)}). When using \code{"PH"} and \code{del} is omitted, it defaults to 1.}
-\item{divergence}{Optional custom divergence specification. If supplied, this overrides \code{entropy}. A custom divergence must provide functions \code{g}, \code{g_inv}, \code{g_prime_inv}, and \code{fprime}.}
+\item{entropy}{Entropy family code (\code{"SL"}, \code{"EL"}, \code{"ET"}, \code{"HD"}, \code{"CE"}, \code{"PH"}), a numeric Renyi order, or a list with \code{code}/\code{family} and (optionally) \code{del} (e.g., \code{list(code = "PH", del = 0.5)}).}
+\item{divergence}{Optional custom divergence specification. If supplied, this overrides \code{entropy}. Requirements depend on the solver: for \code{solver = "cvxr"}, supply \code{G(x)}; for \code{solver = "nleqslv"}, supply \code{g_inv(u, intercept = 0)}; for \code{solver = "newton"} or \code{"auto"}, supply \code{G(x)} and \code{g_inv(u, intercept = 0)}. Optional functions \code{g}, \code{g_prime_inv}, and \code{fprime} improve accuracy and avoid numeric fallbacks.}
 \item{w.scale}{Weight scaling factor (phi).}
 \item{G.scale}{Entropy scaling factor (q).}
 \item{bounds}{Optional weight bounds. Can be a length-2 numeric vector \code{c(lower, upper)}, a list \code{list(lower=, upper=)}, or an \code{n x 2} matrix.
