@@ -38,9 +38,9 @@
 #'   vector is recommended; names are matched to `colnames(model.matrix(...))`.
 #' @param method Calibration method: "BD" (Bregman divergence), "GE" (generalized entropy),
 #'   or "DS" (Deville-Sarndal style divergence).
-#' @param entropy Entropy family code ("SL", "EL", "ET", "HD", "CE", "PH") or a numeric
-#'   Renyi order.
-#' @param del Optional threshold used when `entropy = "PH"`.
+#' @param entropy Entropy family code ("SL", "EL", "ET", "HD", "CE", "PH"),
+#'   a numeric Renyi order, or a list with `code`/`family` and (optionally) `del`
+#'   (e.g., `list(code = "PH", del = 0.5)`).
 #' @param w.scale Weight scaling factor (phi). See package documentation.
 #' @param G.scale Entropy scaling factor (q). See package documentation.
 #' @param bounds Optional weight bounds.
@@ -99,6 +99,13 @@ calibrate <- function(formula,
     w0_is_scalar <- TRUE
   } else {
     w0_is_scalar <- FALSE
+  }
+
+  if (!is.null(del)) {
+    warning(
+      "`del` is deprecated; supply `entropy = list(code = \"PH\", del = ...)` instead.",
+      call. = FALSE
+    )
   }
 
   # Normalize entropy / divergence spec
