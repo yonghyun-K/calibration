@@ -1,7 +1,7 @@
 Package: calibration
 Type: Package
 Title: Weight Calibration with Multiple Solvers and Diagnostics
-Version: 0.1.9
+Version: 0.1.10
 Authors@R: c(
     person("Yonghyun", "Kwon", role = c("aut"), email = "yhkwon@kma.ac.kr", comment = c(ORCID = "0000-0001-9923-6790")),
     person("Jae Kwang", "Kim", role = c("aut"), email = "jkim@iastate.edu", comment = c(ORCID = "0000-0002-0246-6029")),

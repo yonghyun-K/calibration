@@ -111,6 +111,15 @@
   tol_gap <- if (!is.null(solver_control$constraint_tol)) solver_control$constraint_tol else 1e-8
   armijo_c <- if (!is.null(solver_control$armijo_c)) solver_control$armijo_c else 1e-4
 
+  # When bounds are present, a good initialization is often the *unbounded*
+  # solution (if it exists). This avoids starting in a fully-saturated region
+  # where the Jacobian is identically zero.
+  start_from_unbounded <- if (!is.null(solver_control$start_from_unbounded)) {
+    isTRUE(solver_control$start_from_unbounded)
+  } else {
+    TRUE
+  }
+
   # Method-specific setup (match the nleqslv backend)
   if (identical(method, "BD")) {
     d <- rep(1, n)
@@ -174,15 +183,9 @@
       stop("Bounds require positive scaling (d > 0) in the Newton backend.")
     }
 
-    # Warn (softly) if initial weights fall outside the requested bounds.
-    # The duality derivation based on truncating the generator typically assumes
-    # w0 is within [lower, upper]. We still proceed but surface a message.
-    if (!is.null(lower) && any(is.finite(lower) & (w0 < lower))) {
-      warning("Some entries of w0 are below the requested lower bound; bounded calibration may be ill-posed.", call. = FALSE)
-    }
-    if (!is.null(upper) && any(is.finite(upper) & (w0 > upper))) {
-      warning("Some entries of w0 are above the requested upper bound; bounded calibration may be ill-posed.", call. = FALSE)
-    }
+    # Note: we do NOT require w0 to lie within the bounds. Bounds are imposed
+    # on the *solution* weights. The dual derivation uses the truncated
+    # conjugate (FH) and remains valid even when w0 lies outside the box.
 
     low_tilde <- if (!is.null(lower)) lower * w_scale / d else rep(-Inf, n)
     up_tilde  <- if (!is.null(upper)) upper * w_scale / d else rep( Inf, n)
@@ -217,6 +220,50 @@
           stop("Upper bound violates the divergence domain for the chosen entropy.")
         }
         v_up[idx] <- tmp
+      }
+    }
+  }
+
+  # If bounds are present, try the unbounded solve first (fast and usually
+  # provides an excellent warm start). If the unbounded solution already
+  # satisfies the bounds, we can return it directly.
+  if (has_bounds && start_from_unbounded) {
+    sc0 <- solver_control
+    sc0$start_from_unbounded <- FALSE
+    sol0 <- .solve_newton(X = X, const = const, w0 = w0, method = method, spec = spec,
+                          w_scale = w_scale, G_scale = G_scale, bounds = NULL,
+                          solver_control = sc0)
+    if (isTRUE(sol0$diagnostics$converged)) {
+      w_unb <- sol0$w
+      btol <- if (!is.null(solver_control$bound_tol)) solver_control$bound_tol else 1e-8
+      ok_lower <- TRUE
+      ok_upper <- TRUE
+      if (!is.null(lower)) {
+        idx <- is.finite(lower)
+        if (any(idx)) ok_lower <- all(w_unb[idx] >= lower[idx] - btol)
+      }
+      if (!is.null(upper)) {
+        idx <- is.finite(upper)
+        if (any(idx)) ok_upper <- all(w_unb[idx] <= upper[idx] + btol)
+      }
+
+      if (isTRUE(ok_lower) && isTRUE(ok_upper)) {
+        # Attach bound diagnostics (even though bounds were inactive).
+        sol0$diagnostics$n_at_lower <- if (!is.null(lower)) {
+          idx <- is.finite(lower)
+          if (any(idx)) sum(abs(w_unb[idx] - lower[idx]) <= btol) else 0L
+        } else 0L
+        sol0$diagnostics$n_at_upper <- if (!is.null(upper)) {
+          idx <- is.finite(upper)
+          if (any(idx)) sum(abs(w_unb[idx] - upper[idx]) <= btol) else 0L
+        } else 0L
+        sol0$diagnostics$message <- "Converged (unbounded solution already satisfies bounds)."
+        return(sol0)
+      }
+
+      # Otherwise, warm-start bounded iterations from the unbounded lambda.
+      if (length(sol0$lambda) == p && all(is.finite(sol0$lambda))) {
+        lambda <- sol0$lambda
       }
     }
   }
@@ -283,7 +330,26 @@
       return(list(ok = FALSE))
     }
 
-    list(ok = TRUE, w = w, gp = gp)
+    list(ok = TRUE, w = w, gp = gp, omega_tilde = omega_tilde, nu = nu)
+  }
+
+  # Dual objective (up to an additive constant). This is used as a merit
+  # function for line search. Crucially, with bounds it remains *strictly*
+  # informative even in regions where all weights are saturated (where
+  # ||res||^2 is locally flat).
+  dual_obj <- function(lam, mw) {
+    if (is.null(mw)) mw <- weight_map(lam)
+    if (!isTRUE(mw$ok)) return(Inf)
+
+    # Need G to evaluate FH via FH(nu) = w*nu - G(w).
+    Gv <- .G_impl(mw$omega_tilde, spec)
+    if (any(!is.finite(Gv))) return(Inf)
+
+    FH <- mw$omega_tilde * mw$nu - Gv
+    if (any(!is.finite(FH))) return(Inf)
+
+    # Scale so that grad(obj) = res.
+    G_scale * sum(d * FH) - drop(crossprod(lam, const))
   }
 
   # Main iterations
@@ -322,7 +388,14 @@
 
     step_dir <- tryCatch(solve(J, res), error = function(e) qr.solve(J, res))
 
-    g0 <- sum(res^2)
+    # Ensure we have a descent direction for the dual objective.
+    slope <- sum(res * step_dir)
+    if (!is.finite(slope) || slope <= 0) {
+      step_dir <- res
+      slope <- sum(res * step_dir)
+    }
+
+    f0 <- dual_obj(lambda, mw)
     step <- 1
     accepted <- FALSE
 
@@ -330,9 +403,9 @@
       lam_new <- lambda - step * step_dir
       mw_new <- weight_map(lam_new)
       if (isTRUE(mw_new$ok)) {
-        res_new <- colSums(X * mw_new$w) - const
-        g1 <- sum(res_new^2)
-        if (is.finite(g1) && g1 <= (1 - armijo_c * step) * g0) {
+        # Armijo backtracking on the dual objective
+        f1 <- dual_obj(lam_new, mw_new)
+        if (is.finite(f1) && is.finite(f0) && f1 <= f0 - armijo_c * step * slope) {
           lambda <- lam_new
           accepted <- TRUE
           break
@@ -342,8 +415,11 @@
     }
 
     if (!accepted) {
-      # Conservative fallback, similar to the reference implementation
-      lambda <- lambda * 0.5
+      # Fallback: small gradient step (guaranteed descent for convex objectives).
+      # This helps in fully-saturated regions where the Hessian/Jacobian can be
+      # effectively zero.
+      step_g <- if (!is.null(solver_control$grad_step)) solver_control$grad_step else 1e-3
+      lambda <- lambda - step_g * res
     }
 
     if (it == maxit) {

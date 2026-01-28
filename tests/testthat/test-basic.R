@@ -112,3 +112,30 @@ test_that("mean-scale (sum(w)=1) variance does not produce NaN", {
   expect_true(all(is.finite(se)))
   expect_false(any(is.nan(se)))
 })
+
+test_that("bounds work with solver='newton' even when w0 is outside the box", {
+  set.seed(1)
+  n <- 10
+  df <- data.frame(z = rnorm(n))
+
+  # Force weights to be around 30 on average, while w0 = 1 is far below the bound.
+  const <- c("(Intercept)" = 300)
+
+  fit <- calibrate(~ 1,
+                   w0 = 1,
+                   data = df,
+                   const = const,
+                   method = "BD",
+                   entropy = "ET",
+                   bounds = c(30, 60),
+                   solver = "newton",
+                   solver_control = list(constraint_tol = 1e-6))
+
+  expect_true(isTRUE(fit$diagnostics$converged))
+  w <- weights(fit)
+  expect_true(all(is.finite(w)))
+  expect_true(all(w >= 30 - 1e-6))
+  expect_true(all(w <= 60 + 1e-6))
+  gap <- colSums(fit$X * w) - fit$const
+  expect_lt(max(abs(gap)), 1e-6)
+})

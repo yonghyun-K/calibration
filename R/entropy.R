@@ -37,6 +37,65 @@ entropy_spec <- function(entropy, del = NULL) {
 }
 
 
+#' Generator G(x) for built-in families
+#'
+#' This is used internally to evaluate dual objectives (via convex conjugates)
+#' when bounds are handled through the truncated-conjugate / Huberization idea.
+#'
+#' The generator is only defined up to an additive linear term; Bregman
+#' divergence is invariant to such shifts, so we pick convenient closed forms.
+#'
+#' @keywords internal
+.G_impl <- function(x, spec) {
+  if (!is.list(spec) || is.null(spec$family)) stop("Internal error: invalid entropy spec")
+
+  if (identical(spec$family, "custom")) {
+    # Optional: user-supplied generator (not required for unbounded problems)
+    if (is.function(spec$G)) return(spec$G(x))
+    return(rep(NA_real_, length(x)))
+  }
+
+  if (identical(spec$family, "CE")) {
+    if (any(x <= 1, na.rm = TRUE)) return(rep(Inf, length(x)))
+    return((x - 1) * log(x - 1) - x * log(x))
+  }
+
+  if (identical(spec$family, "PH")) {
+    del <- spec$del
+    if (is.null(del) || !is.finite(del) || del <= 0) return(rep(Inf, length(x)))
+    return(del^2 * (sqrt(1 + (x / del)^2) - 1))
+  }
+
+  r <- spec$r
+  if (is.null(r) || !is.finite(r)) {
+    return(rep(NA_real_, length(x)))
+  }
+
+  # r == 0: exponential tilting / KL
+  if (isTRUE(all.equal(r, 0))) {
+    if (any(x <= 0, na.rm = TRUE)) return(rep(Inf, length(x)))
+    return(x * log(x) - x)
+  }
+
+  # r == -1: empirical likelihood
+  if (isTRUE(all.equal(r, -1))) {
+    if (any(x <= 0, na.rm = TRUE)) return(rep(Inf, length(x)))
+    return(-log(x))
+  }
+
+  # General Renyi-style family
+  if (any(x < 0, na.rm = TRUE) && !.is_odd_positive_integer(r)) {
+    return(rep(Inf, length(x)))
+  }
+
+  denom <- r * (r + 1)
+  if (!is.finite(denom) || abs(denom) < .Machine$double.eps) {
+    return(rep(Inf, length(x)))
+  }
+  x^(r + 1) / denom
+}
+
+
 #' Validate a user-supplied divergence specification
 #'
 #' A custom divergence must provide the following functions:
