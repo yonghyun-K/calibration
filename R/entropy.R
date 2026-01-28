@@ -328,8 +328,10 @@ entropy_spec <- function(entropy, del = NULL) {
       return(spec$g_prime_inv(u, intercept = intercept))
     }
     if (is.function(spec$g_inv)) {
-      fn <- function(v) spec$g_inv(v, intercept = intercept)
-      return(.num_derivative(fn, u))
+      return(vapply(seq_along(u), function(i) {
+        fn <- function(v) spec$g_inv(v, intercept = intercept[i])
+        .num_derivative(fn, u[i])
+      }, numeric(1)))
     }
     return(rep(NA_real_, length(u)))
   }
