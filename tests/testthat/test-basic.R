@@ -139,3 +139,42 @@ test_that("bounds work with solver='newton' even when w0 is outside the box", {
   gap <- colSums(fit$X * w) - fit$const
   expect_lt(max(abs(gap)), 1e-6)
 })
+
+test_that("custom divergence works with nleqslv using only g_inv", {
+  skip_if_not_installed("nleqslv")
+
+  df <- data.frame(x = 1:5)
+  const <- c("(Intercept)" = 10)
+  div <- list(g_inv = function(u, intercept = 0) -1 / (u + intercept))
+
+  fit <- calibrate(~ 1, w0 = 2, data = df, const = const,
+                   method = "BD", divergence = div,
+                   solver = "nleqslv",
+                   solver_control = list(constraint_tol = 1e-6))
+
+  expect_true(isTRUE(fit$diagnostics$converged))
+  gap <- colSums(fit$X * weights(fit)) - fit$const
+  expect_lt(max(abs(gap)), 1e-6)
+})
+
+test_that("custom divergence with G works in cvxr", {
+  skip_if_not_installed("CVXR")
+  if (!requireNamespace("ECOS", quietly = TRUE) &&
+      !requireNamespace("scs", quietly = TRUE) &&
+      !requireNamespace("osqp", quietly = TRUE)) {
+    skip("No CVXR-compatible solver installed.")
+  }
+
+  df <- data.frame(x = 1:4)
+  const <- c("(Intercept)" = 4)
+  div <- list(G = function(w) ifelse(w < 0, Inf, w^2))
+
+  fit <- calibrate(~ 1, w0 = 1, data = df, const = const,
+                   method = "BD", divergence = div,
+                   solver = "cvxr",
+                   solver_control = list(constraint_tol = 1e-6))
+
+  expect_true(isTRUE(fit$diagnostics$converged))
+  gap <- colSums(fit$X * weights(fit)) - fit$const
+  expect_lt(max(abs(gap)), 1e-6)
+})

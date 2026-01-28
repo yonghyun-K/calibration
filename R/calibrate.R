@@ -41,6 +41,11 @@
 #' @param entropy Entropy family code ("SL", "EL", "ET", "HD", "CE", "PH"),
 #'   a numeric Renyi order, or a list with `code`/`family` and (optionally) `del`
 #'   (e.g., `list(code = "PH", del = 0.5)`).
+#' @param divergence Optional custom divergence specification. If supplied, this overrides `entropy`.
+#'   Required functions depend on the solver: for `solver = "cvxr"`, supply `G(x)`; for
+#'   `solver = "nleqslv"`, supply `g_inv(u, intercept = 0)`; for `solver = "newton"`/`"auto"`,
+#'   supply `G(x)` and `g_inv(u, intercept = 0)`. Optional functions `g`, `g_prime_inv`,
+#'   and `fprime` improve accuracy and avoid numeric fallbacks.
 #' @param w.scale Weight scaling factor (phi). See package documentation.
 #' @param G.scale Entropy scaling factor (q). See package documentation.
 #' @param bounds Optional weight bounds.
@@ -109,8 +114,9 @@ calibrate <- function(formula,
   }
 
   # Normalize entropy / divergence spec
+  solver_for_validation <- if (identical(solver, "auto")) "newton" else solver
   spec <- if (!is.null(divergence)) {
-    .validate_custom_divergence(divergence)
+    .validate_custom_divergence(divergence, solver = solver_for_validation)
   } else {
     entropy_spec(entropy, del = del)
   }
