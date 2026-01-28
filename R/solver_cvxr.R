@@ -200,15 +200,52 @@ if (!is.null(bnd$upper)) {
   gap <- achieved - const
   diagnostics$max_abs_constraint_gap <- max(abs(gap))
 
-# Decide convergence primarily based on CVXR's own termination status.
-# CVXR backends vary widely in how tightly they enforce equality constraints
-# (e.g., OSQP/SCS defaults can be much looser than 1e-8). If the solver reports
-# an optimal solution, we return weights and surface the achieved constraint gaps
-# in diagnostics/summary().
-status_txt <- as.character(sol$status)
-status_ok <- isTRUE(nzchar(status_txt)) && grepl("^optimal", tolower(status_txt))
+  bounds_tol <- if (!is.null(solver_control$bounds_tol)) solver_control$bounds_tol else 1e-6
+  bounds_ok <- TRUE
+  bounds_msg <- NULL
+  if (!is.null(bnd$lower)) {
+    idx <- is.finite(bnd$lower)
+    if (any(idx)) {
+      lower_slack <- bnd$lower[idx] - w_hat[idx]
+      max_lower_slack <- max(lower_slack, na.rm = TRUE)
+      if (is.finite(max_lower_slack) && max_lower_slack > bounds_tol) {
+        bounds_ok <- FALSE
+        bounds_msg <- paste0(
+          "weights violate lower bounds (max slack: ",
+          format(max_lower_slack, digits = 6), ")"
+        )
+      }
+    }
+  }
+  if (!is.null(bnd$upper)) {
+    idx <- is.finite(bnd$upper)
+    if (any(idx)) {
+      upper_slack <- w_hat[idx] - bnd$upper[idx]
+      max_upper_slack <- max(upper_slack, na.rm = TRUE)
+      if (is.finite(max_upper_slack) && max_upper_slack > bounds_tol) {
+        bounds_ok <- FALSE
+        upper_msg <- paste0(
+          "weights violate upper bounds (max slack: ",
+          format(max_upper_slack, digits = 6), ")"
+        )
+        bounds_msg <- if (is.null(bounds_msg)) upper_msg else paste(bounds_msg, upper_msg, sep = "; ")
+      }
+    }
+  }
+  if (!bounds_ok) diagnostics$message <- bounds_msg
 
-diagnostics$converged <- status_ok && all(is.finite(w_hat)) && is.finite(diagnostics$max_abs_constraint_gap)
+  # Decide convergence primarily based on CVXR's own termination status.
+  # CVXR backends vary widely in how tightly they enforce equality constraints
+  # (e.g., OSQP/SCS defaults can be much looser than 1e-8). If the solver reports
+  # an optimal solution, we return weights and surface the achieved constraint gaps
+  # in diagnostics/summary().
+  status_txt <- as.character(sol$status)
+  status_ok <- isTRUE(nzchar(status_txt)) && grepl("^optimal", tolower(status_txt))
+
+  diagnostics$converged <- status_ok &&
+    bounds_ok &&
+    all(is.finite(w_hat)) &&
+    is.finite(diagnostics$max_abs_constraint_gap)
 
 list(w = if (diagnostics$converged) w_hat else rep(NA_real_, n),
      lambda = rep(NA_real_, p),
