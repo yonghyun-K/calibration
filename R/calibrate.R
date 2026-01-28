@@ -52,7 +52,11 @@
 #'   (piecewise) update, which avoids introducing separate inequality multipliers.
 #'   See the duality derivation in the attached notes. 
 #' @param solver Solver backend: "auto", "nleqslv", or "cvxr".
-#' @param solver_control List of backend controls (e.g. `maxit`, `xtol`, `ridge`).
+#' @param solver_control List of backend controls. Common entries include
+#'   `maxit`, `xtol`, `ridge`. For `solver = "cvxr"`, you may also provide
+#'   `cvxr_solver` (e.g., `"MOSEK"`, `"ECOS_BB"`), `cvxr_opts` (a list of options
+#'   passed to [CVXR::solve()]), `bounds_tol` (tolerance for bound violations),
+#'   and `domain_eps` (positivity floor).
 #'
 #' @return A `calibration_fit` object. Use [weights()] to extract weights.
 #' @export
