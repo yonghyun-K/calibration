@@ -2,12 +2,23 @@
 
 #' Normalize an entropy specification
 #'
-#' @param entropy Either a numeric value (Renyi order) or a string code.
+#' @param entropy Either a numeric value (Renyi order), a string code,
+#'   or a list with `code`/`family` and (optionally) `del`.
 #'   Supported codes: "SL", "EL", "ET", "HD", "CE", "PH".
 #' @param del Optional threshold used by "PH".
 #'
 #' @keywords internal
 entropy_spec <- function(entropy, del = NULL) {
+  if (is.list(entropy)) {
+    code <- entropy$family
+    if (is.null(code)) code <- entropy$code
+    if (is.null(code)) code <- entropy$entropy
+    if (is.null(code)) {
+      stop("When entropy is a list, it must include 'family' or 'code'.")
+    }
+    if (!is.null(entropy$del)) del <- entropy$del
+    entropy <- code
+  }
   if (is.numeric(entropy)) {
     return(list(family = "renyi", r = as.numeric(entropy), del = del))
   }
