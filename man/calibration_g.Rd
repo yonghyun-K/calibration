@@ -11,7 +11,7 @@ calibration_g(x, entropy = c("SL", "EL", "ET", "HD", "CE", "PH"), del = NULL)
 \arguments{
 \item{x}{Numeric vector.}
 \item{entropy}{Entropy family code or numeric Renyi order.}
-\item{del}{Optional threshold used when entropy = "PH".}
+\item{del}{Optional threshold used when entropy = "PH". Defaults to 1 when omitted.}
 }
 \value{
 A numeric vector.
