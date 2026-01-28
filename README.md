@@ -5,7 +5,23 @@ structured solver diagnostics, and extensible solver backends.
 
 It is a refactoring / redesign inspired by the existing **GECal** package.
 
-## Installation (from source)
+## Installation
+
+### Install from GitHub
+
+```r
+install.packages("pak")
+pak::pak("yonghyun-K/calibration")
+```
+
+Or with remotes:
+
+```r
+install.packages("remotes")
+remotes::install_github("yonghyun-K/calibration")
+```
+
+### Install from source
 
 ```r
 install.packages("nleqslv")
